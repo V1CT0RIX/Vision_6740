@@ -41,7 +41,7 @@ def main():
             outputStream.notifyError(cvSink.getError())
             # skip the rest of the current iteration
             continue
-        
+
         if do_image_processing.value:
             img = image_processor(img, sd, cameraprop, stream_type, threshold_parameters)
 
@@ -88,29 +88,29 @@ def image_processor(input_img, sd, cameraprop, stream_type, threshold_parameters
                 detected_shapes.append(approx)
 
         return detected_shapes_img, detected_shapes
-    
-    #function code
-    thresholded_img = clear_noize((threshold(input_img, threshold_parameters[0], threshold_parameters[1])), 200)
-    cv2.imshow("threshold", thresholded_img)
 
+    #function code
+    thresholded_img = clear_noize((threshold(input_img, (threshold_parameters[0],threshold_parameters[1],threshold_parameters[2]), threshold_parameters[3],threshold_parameters[4],threshold_parameters[5])), 200)
+    #cv2.imshow("threshold", thresholded_img)
 
     detected_shapes_img, detected_shapes = detect_shapes(input_img, thresholded_img, 4, 200, 0.05)
 
     if len(detected_shapes) > 0:
         M = cv2.moments(thresholded_img)
         center = [int(M["m10"]/M["m00"]),int(M["m01"]/M["m00"])]
+
+        #calc distance, angles, force
         x_angle, y_angle = distance.PixelsToAngles(center[0],center[1], cameraprop)
-        
+        distance = distance.dist(y_angle,th,ch)
+        hood_angle, velocity = distance.force(th,ch,distance) #need to set robot and target height
 
-        print(distance.dist(y_angle, 10.25, 5))
-
-        sd.putValue('target', (center, (x_angle, y_angle), distance))
+        sd.putValue('shooter', (velocity, hood_angle))
     else:
-        sd.putValue('target', None)
+        sd.putValue('shooter', None)
 
         center = (-1, -1)
 
-    if stream_type.value == "normal":
+    if stream_type.value == 0:
         return cv2.circle(detected_shapes_img, tuple(center), 2, (255,0,0))
     else:
         return thresholded_img
