@@ -38,7 +38,11 @@ def force(th,ch,d):
 
     v = m.sqrt((g*t)**2+(d/t)**2)
 
-    a = m.radians(90) - m.atan((g*(t**2))/d)
+    try:
+        a = m.radians(90) - m.atan((g*(t**2))/d)
+    except ZeroDivisionError as e:
+        print("the distance is zero, this shouldn't happen")
+        a = -1
 
     '''
     # H = Hw-Hr
@@ -47,7 +51,7 @@ def force(th,ch,d):
     a = m.atan((2*H)/d)
     '''
 
-    return (m.degrees(a),k*v)
+    return (m.degrees(a),v)
 
 '''
 #test

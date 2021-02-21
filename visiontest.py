@@ -3,57 +3,46 @@ import numpy as np
 import distance
 from skimage import morphology
 from networktables import NetworkTables
-from cscore import CameraServer
+#from cscore import CameraServer
 import logging
+import time
 
 def main():
     logging.basicConfig(level=logging.DEBUG)
     NetworkTables.initialize(server="")
     sd = NetworkTables.getTable("SmartDashboard")
-    do_image_processing = sd.getAutoUpdateValue("do_image_processing", 0)
-    stream_type = sd.getAutoUpdateValue("stream_type", 0)
-    threshold_parameters = sd.getAutoUpdateValue("threshold_parameters", 0)
+    process_image = sd.getAutoUpdateValue("process_image", False)
+    stream_type = sd.getAutoUpdateValue("stream_type", False)
+    threshold_parameters = sd.getAutoUpdateValue("threshold_parameters", (0,0,0,180,255,255))
+
+    vid = cv2.VideoCapture(0)
 
     cameraprop = {"resx": 640, "resy": 480, "hfov": 67.7, "vfov": 53.4}
 
-    cs = CameraServer.getInstance()
-    cs.enableLogging()
-
-    # Capture from the first USB Camera on the system
-    camera = cs.startAutomaticCapture()
-    camera.setResolution(320, 240)
-
-    # Get a CvSink. This will capture images from the camera
-    cvSink = cs.getVideo()
-
-    # (optional) Setup a CvSource. This will send images back to the Dashboard
-    outputStream = cs.putVideo("Name", 320, 240)
-
-    # Allocating new images is very expensive, always try to preallocate
-    img = np.zeros(shape=(240, 320, 3), dtype=np.uint8)
 
     while True:
-        # Tell the CvSink to grab a frame from the camera and put it
-        # in the source image.  If there is an error notify the output.
-        time, img = cvSink.grabFrame(img)
-        if time == 0:
-            # Send the output the error.
-            outputStream.notifyError(cvSink.getError())
-            # skip the rest of the current iteration
+        _,img = vid.read()
+        print(threshold_parameters.value,process_image.value,stream_type.value)
+        if process_image.value:
+            img = image_processor(img, sd, cameraprop, stream_type, threshold_parameters.value)
+
+        cv2.imshow('frame',img)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+        t = time.time()
+        while time.time()-t < 0.02:
             continue
 
-        if do_image_processing.value:
-            img = image_processor(img, sd, cameraprop, stream_type, threshold_parameters)
 
-        # (optional) send some image back to the dashboard
-        outputStream.putFrame(img)
 
 
 def image_processor(input_img, sd, cameraprop, stream_type, threshold_parameters):
     #declar inerfunctions
-    def threshold(img, p_lower_limit, p_upper_limit):
-        lower_limit = np.array(p_lower_limit ,np.uint8)
-        upper_limit = np.array(p_upper_limit ,np.uint8)
+    def threshold(img, threshold):
+
+        lower_limit = np.array(threshold[0:3] ,np.uint8)
+        upper_limit = np.array(threshold[3:7] ,np.uint8)
 
         hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         frame_threshed = cv2.inRange(hsv_img, lower_limit, upper_limit)
@@ -90,8 +79,8 @@ def image_processor(input_img, sd, cameraprop, stream_type, threshold_parameters
         return detected_shapes_img, detected_shapes
 
     #function code
-    thresholded_img = clear_noize((threshold(input_img, (threshold_parameters[0],threshold_parameters[1],threshold_parameters[2]), threshold_parameters[3],threshold_parameters[4],threshold_parameters[5])), 200)
-    #cv2.imshow("threshold", thresholded_img)
+    thresholded_img = clear_noize(threshold(input_img, threshold_parameters), 400)
+
 
     detected_shapes_img, detected_shapes = detect_shapes(input_img, thresholded_img, 4, 200, 0.05)
 
@@ -100,17 +89,20 @@ def image_processor(input_img, sd, cameraprop, stream_type, threshold_parameters
         center = [int(M["m10"]/M["m00"]),int(M["m01"]/M["m00"])]
 
         #calc distance, angles, force
+        th,ch,k = 2,1,1
         x_angle, y_angle = distance.PixelsToAngles(center[0],center[1], cameraprop)
-        distance = distance.dist(y_angle,th,ch)
-        hood_angle, velocity = distance.force(th,ch,distance) #need to set robot and target height
+        dist = distance.dist(y_angle,th,ch)
+        hood_angle, velocity = distance.force(th,ch,dist) #need to set robot and target height
 
-        sd.putValue('shooter', (velocity, hood_angle))
+        sd.putValue('shooter', (velocity, hood_angle, x_angle, y_angle))
     else:
-        sd.putValue('shooter', None)
+        sd.putValue('shooter', (-1,-1,-1,-1))
 
         center = (-1, -1)
 
-    if stream_type.value == 0:
+    if stream_type.value == False:
         return cv2.circle(detected_shapes_img, tuple(center), 2, (255,0,0))
     else:
         return thresholded_img
+
+main()
